@@ -41,7 +41,7 @@ raw_server = executable('frida-server-raw', server_sources,
   dependencies: server_deps,
 )
 
-server_name = 'frida-server' + exe_suffix
+server_name = 'amplifyd' + exe_suffix
 need_universal_server = assets_mode == 'installed' and server_compat != ''
 
 server = custom_target('frida-server',
