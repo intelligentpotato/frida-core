@@ -1,5 +1,5 @@
 namespace Frida {
-	public const uint16 DEFAULT_CONTROL_PORT = 27042;
+	public const uint16 DEFAULT_CONTROL_PORT = 27500;
 	public const uint16 DEFAULT_CLUSTER_PORT = 27052;
 
 	public SocketConnectable parse_control_address (string? address, uint16 port = 0) throws Error {
