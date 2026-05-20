@@ -15,6 +15,77 @@
 # include <gioopenssl.h>
 #endif
 
+#ifdef HAVE_LINUX
+# include <pthread.h>
+# include <string.h>
+# include <sys/prctl.h>
+# include <gum/gum.h>
+# include <gum/guminterceptor.h>
+
+static int (* frida_real_pthread_setname_np) (pthread_t thread,
+    const char * name);
+static int (* frida_real_prctl) (int option, unsigned long arg2,
+    unsigned long arg3, unsigned long arg4, unsigned long arg5);
+
+static const char *
+frida_sanitize_thread_name (const char * name)
+{
+  if (name == NULL)
+    return name;
+  if (strcmp (name, "gmain") == 0)
+    return "Jit thread pool";
+  if (strcmp (name, "gdbus") == 0)
+    return "Binder:1";
+  return name;
+}
+
+static int
+frida_replacement_pthread_setname_np (pthread_t thread, const char * name)
+{
+  return frida_real_pthread_setname_np (thread,
+      frida_sanitize_thread_name (name));
+}
+
+static int
+frida_replacement_prctl (int option, unsigned long arg2, unsigned long arg3,
+                         unsigned long arg4, unsigned long arg5)
+{
+  if (option == PR_SET_NAME)
+  {
+    arg2 = (unsigned long) frida_sanitize_thread_name (
+        (const char *) arg2);
+  }
+  return frida_real_prctl (option, arg2, arg3, arg4, arg5);
+}
+
+static void
+frida_install_thread_name_sanitizer (void)
+{
+  static gboolean installed = FALSE;
+  GumInterceptor * interceptor;
+
+  if (installed)
+    return;
+  installed = TRUE;
+
+  gum_init_embedded ();
+  interceptor = gum_interceptor_obtain ();
+  gum_interceptor_begin_transaction (interceptor);
+  gum_interceptor_replace (interceptor,
+      GSIZE_TO_POINTER (pthread_setname_np),
+      frida_replacement_pthread_setname_np,
+      NULL,
+      (gpointer *) &frida_real_pthread_setname_np);
+  gum_interceptor_replace (interceptor,
+      GSIZE_TO_POINTER (prctl),
+      frida_replacement_prctl,
+      NULL,
+      (gpointer *) &frida_real_prctl);
+  gum_interceptor_end_transaction (interceptor);
+  g_object_unref (interceptor);
+}
+#endif
+
 void
 _frida_agent_environment_init (void)
 {
@@ -28,6 +99,9 @@ _frida_agent_environment_init (void)
 
 #ifdef _MSC_VER
   frida_libc_shim_init ();
+#endif
+#ifdef HAVE_LINUX
+  frida_install_thread_name_sanitizer ();
 #endif
   gio_init ();
 
